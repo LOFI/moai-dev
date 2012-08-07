@@ -146,6 +146,35 @@ static void _onSpecialFunc ( int key, int x, int y ) {
 	
 		AKUSoftReleaseGfxResources ( 0 );
 	}
+
+	// Add support for arrow keys
+	if (key == GLUT_KEY_LEFT) {
+		static bool left_pressed = true;
+
+		AKUEnqueueKeyboardEvent (GlutInputDeviceID::DEVICE, GlutInputDeviceSensorID::KEYBOARD, 1, left_pressed);
+		left_pressed = !left_pressed;
+	}
+
+	if (key == GLUT_KEY_RIGHT) {
+		static bool right_pressed = true;
+
+		AKUEnqueueKeyboardEvent (GlutInputDeviceID::DEVICE, GlutInputDeviceSensorID::KEYBOARD, 2, right_pressed);
+		right_pressed = !right_pressed;
+	}
+
+	if (key == GLUT_KEY_UP) {
+		static bool up_pressed = true;
+
+		AKUEnqueueKeyboardEvent (GlutInputDeviceID::DEVICE, GlutInputDeviceSensorID::KEYBOARD, 3, up_pressed);
+		up_pressed = !up_pressed;
+	}
+
+	if (key == GLUT_KEY_DOWN) {
+		static bool down_pressed = true;
+
+		AKUEnqueueKeyboardEvent (GlutInputDeviceID::DEVICE, GlutInputDeviceSensorID::KEYBOARD, 4, down_pressed);
+		down_pressed = !down_pressed;
+	}
 }
 
 //----------------------------------------------------------------//
