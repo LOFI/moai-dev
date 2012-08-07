@@ -50,6 +50,10 @@
 	#include <FolderWatcher-mac.h>
 #endif
 
+enum{
+	SPECIAL_KEY_OFFSET=256
+};
+
 namespace GlutInputDeviceID {
 	enum {
 		DEVICE,
@@ -147,34 +151,21 @@ static void _onSpecialFunc ( int key, int x, int y ) {
 		AKUSoftReleaseGfxResources ( 0 );
 	}
 
-	// Add support for arrow keys
-	if (key == GLUT_KEY_LEFT) {
-		static bool left_pressed = true;
+	AKUEnqueueKeyboardEvent(
+		GlutInputDeviceID::DEVICE,
+		GlutInputDeviceSensorID::KEYBOARD,
+		SPECIAL_KEY_OFFSET+key, true
+		);
+}
 
-		AKUEnqueueKeyboardEvent (GlutInputDeviceID::DEVICE, GlutInputDeviceSensorID::KEYBOARD, 1, left_pressed);
-		left_pressed = !left_pressed;
-	}
-
-	if (key == GLUT_KEY_RIGHT) {
-		static bool right_pressed = true;
-
-		AKUEnqueueKeyboardEvent (GlutInputDeviceID::DEVICE, GlutInputDeviceSensorID::KEYBOARD, 2, right_pressed);
-		right_pressed = !right_pressed;
-	}
-
-	if (key == GLUT_KEY_UP) {
-		static bool up_pressed = true;
-
-		AKUEnqueueKeyboardEvent (GlutInputDeviceID::DEVICE, GlutInputDeviceSensorID::KEYBOARD, 3, up_pressed);
-		up_pressed = !up_pressed;
-	}
-
-	if (key == GLUT_KEY_DOWN) {
-		static bool down_pressed = true;
-
-		AKUEnqueueKeyboardEvent (GlutInputDeviceID::DEVICE, GlutInputDeviceSensorID::KEYBOARD, 4, down_pressed);
-		down_pressed = !down_pressed;
-	}
+static void _onSpecialUpFunc(int key, int x, int y) {
+	(void)x;
+	(void)y;
+	AKUEnqueueKeyboardEvent(
+		GlutInputDeviceID::DEVICE,
+		GlutInputDeviceSensorID::KEYBOARD,
+		SPECIAL_KEY_OFFSET+key, false
+		);
 }
 
 //----------------------------------------------------------------//
@@ -314,6 +305,7 @@ void _AKUOpenWindowFunc ( const char* title, int width, int height ) {
 	glutKeyboardFunc ( _onKeyDown );
 	glutKeyboardUpFunc ( _onKeyUp );
 	glutSpecialFunc ( _onSpecialFunc );
+	glutSpecialUpFunc( _onSpecialUpFunc );
 	
 	glutMouseFunc ( _onMouseButton );
 	glutMotionFunc ( _onMouseDrag );
