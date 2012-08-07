@@ -51,7 +51,7 @@
 #  include <ifaddrs.h>
 #endif
 #ifdef HAVE_STROPTS_H
-#  include <stropts.h>
+//#  include <stropts.h>
 #endif
 #ifdef VMS
 #  include <inet.h>
