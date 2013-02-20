@@ -46,7 +46,7 @@ static long _getTimerInfo () {
 	
 	double USDeviceTime::GetTimeInSeconds () {
 			
-		#if defined ANDROID || defined __MOAI_LINUX_BUILD
+		#if defined ANDROID || defined __linux__
 			
 			struct timespec timer;
 			timer.tv_nsec = 0;

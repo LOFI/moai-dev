@@ -35,7 +35,7 @@
 #include <moaicore/MOAICoroutine.h>
 #include <moaicore/MOAIDataBuffer.h>
 #include <moaicore/MOAIDataBufferStream.h>
-#include <moaicore/MOAIDataIOAction.h>
+#include <moaicore/MOAIDataIOTask.h>
 #include <moaicore/MOAIDebugLines.h>
 #include <moaicore/MOAIDeck.h>
 #include <moaicore/MOAIDeckRemapper.h>
@@ -67,6 +67,7 @@
 #include <moaicore/MOAIGridDeck2D.h>
 #include <moaicore/MOAIGridPathGraph.h>
 #include <moaicore/MOAIGridSpace.h>
+#include <moaicore/MOAIHashWriter.h>
 #include <moaicore/MOAIImage.h>
 #include <moaicore/MOAIImageTexture.h>
 #include <moaicore/MOAIIndexBuffer.h>
@@ -85,6 +86,9 @@
 #include <moaicore/MOAIMesh.h>
 #include <moaicore/MOAIMotionSensor.h>
 #include <moaicore/MOAIMultiTexture.h>
+#include <moaicore/MOAIMutex.h>
+#include <moaicore/MOAIMutex_posix.h>
+#include <moaicore/MOAIMutex_win32.h>
 #include <moaicore/MOAINode.h>
 #include <moaicore/MOAINodeMgr.h>
 #include <moaicore/MOAIObject.h>
@@ -131,12 +135,19 @@
 #include <moaicore/MOAIStreamWriter.h>
 #include <moaicore/MOAIStretchPatch2D.h>
 #include <moaicore/MOAISurfaceDeck2D.h>
+#include <moaicore/MOAITask.h>
+#include <moaicore/MOAITaskQueue.h>
+#include <moaicore/MOAITaskSubscriber.h>
+#include <moaicore/MOAITaskThread.h>
 #include <moaicore/MOAITextBox.h>
 #include <moaicore/MOAITextBundle.h>
 #include <moaicore/MOAITextDesigner.h>
 #include <moaicore/MOAITextStyle.h>
 #include <moaicore/MOAITexture.h>
 #include <moaicore/MOAITextureBase.h>
+#include <moaicore/MOAIThread.h>
+#include <moaicore/MOAIThread_posix.h>
+#include <moaicore/MOAIThread_win32.h>
 #include <moaicore/MOAITileDeck2D.h>
 #include <moaicore/MOAITileFlags.h>
 #include <moaicore/MOAITimer.h>
@@ -150,6 +161,7 @@
 #include <moaicore/MOAIWeakPtr.h>
 #include <moaicore/MOAIWheelSensor.h>
 #include <moaicore/MOAIXmlParser.h>
+#include <moaicore/MOAIXmlWriter.h>
 
 #if USE_BOX2D
 	#include <moaicore/MOAIBox2DArbiter.h>
@@ -163,6 +175,7 @@
 	#include <moaicore/MOAIBox2DMouseJoint.h>
 	#include <moaicore/MOAIBox2DPrismaticJoint.h>
 	#include <moaicore/MOAIBox2DPulleyJoint.h>
+	#include <moaicore/MOAIBox2DRopeJoint.h>
 	#include <moaicore/MOAIBox2DRevoluteJoint.h>
 	#include <moaicore/MOAIBox2DWeldJoint.h>
 	#include <moaicore/MOAIBox2DWheelJoint.h>

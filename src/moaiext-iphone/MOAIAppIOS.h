@@ -5,9 +5,14 @@
 #define	MOAIAPPIOS_H
 
 #import <Foundation/Foundation.h>
+#import <MessageUI/MFMailComposeViewController.h>
 #import <UIKit/UIKit.h>
+
 #import <moaicore/moaicore.h>
 #import <moaiext-iphone/ReachabilityListener.h>
+
+@class MoaiMailComposeDelegate;
+@class MOAITakeCameraListener;
 
 //================================================================//
 // MOAIAppIOS
@@ -28,10 +33,15 @@ class MOAIAppIOS :
 	public MOAIGlobalClass < MOAIAppIOS, MOAILuaObject > {
 private:
 
+	MoaiMailComposeDelegate* mMailDelegate;
+		
 	//----------------------------------------------------------------//
 	static int	_getDirectoryInDomain	( lua_State* L );
+	static int	_getUTCTime				( lua_State* L );
+	static int	_sendMail				( lua_State* L );
 	static int	_setListener			( lua_State* L );
-
+	static int  _takeCamera             ( lua_State* L );
+		
 public:
 	
 	DECL_LUA_SINGLETON ( MOAIAppIOS )
@@ -54,13 +64,26 @@ public:
 	UIApplication*			mApplication;
 	MOAILuaRef				mListeners [ TOTAL ];
 	ReachabilityListener*	mReachabilityListener;
+	MOAILuaRef				mOnTakeCameraCallback;
+	MOAITakeCameraListener* mTakeCameraListener;
+	UIPopoverController*	mImagePickerPopover;
 
 			MOAIAppIOS			();
 			~MOAIAppIOS			();
+	
 	void	AppOpenedFromURL	( NSURL* url );
 	void	DidStartSession		( bool resumed );
 	void	RegisterLuaClass	( MOAILuaState& state );
 	void	WillEndSession		();
+	static void		callTakeCameraLuaCallback									(NSString* imagePath);
 };
+
+//================================================================//
+// MoaiMailComposeDelegate
+//================================================================//
+@interface MoaiMailComposeDelegate : NSObject < MFMailComposeViewControllerDelegate > {
+@private
+}
+@end
 
 #endif

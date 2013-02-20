@@ -11,7 +11,7 @@
 #include <moaicore/MOAIShader.h>
 #include <moaicore/MOAIShaderMgr.h>
 #include <moaicore/MOAISim.h>
-#include <moaicore/MOAITextureBase.h>
+#include <moaicore/MOAITexture.h>
 #include <moaicore/MOAIVertexFormat.h>
 #include <moaicore/MOAIVertexFormatMgr.h>
 #include <moaicore/MOAIViewport.h>
@@ -178,6 +178,33 @@ int MOAIGfxDevice::_setClearDepth ( lua_State* L ) {
 }
 
 //----------------------------------------------------------------//
+// TODO: doxygen
+int MOAIGfxDevice::_setDefaultTexture ( lua_State* L ) {
+
+	MOAILuaState state ( L );
+	MOAIGfxDevice& device = MOAIGfxDevice::Get ();
+
+	MOAITexture* texture = state.GetLuaObject < MOAITexture >( 1, false );
+	
+	if ( !texture ) {
+		texture = new MOAITexture ();
+		if ( !texture->Init ( state, 1 )) {
+			// TODO: report error
+			delete texture;
+			texture = 0;
+		}
+	}
+
+	device.mDefaultTexture.Set ( device, texture );
+
+	if ( texture ) {
+		texture->PushLuaUserdata ( state );
+		return 1;
+	}
+	return 0;
+}
+
+//----------------------------------------------------------------//
 /**	@name	setPenColor
 
 	@in		number r
@@ -238,6 +265,9 @@ void MOAIGfxDevice::BeginDrawing () {
 
 	mDrawCount = 0;
 
+	//disable scissor rect for clear
+	glDisable ( GL_SCISSOR_TEST );
+	
 	if ( this->mClearFlags & GL_COLOR_BUFFER_BIT ) {
 	
 		USColorVec clearColor;
@@ -265,8 +295,8 @@ void MOAIGfxDevice::BeginDrawing () {
 //----------------------------------------------------------------//
 void MOAIGfxDevice::BeginLayer () {
 
-	float width = ( float )this->mWidth;
-	float height = ( float )this->mHeight;
+	float width = ( float )this->mBufferWidth;
+	float height = ( float )this->mBufferHeight;
 	
 	MOAIViewport viewport;
 	viewport.Init ( 0.0f, 0.0f, width, height );
@@ -333,6 +363,8 @@ void MOAIGfxDevice::BeginPrim ( u32 primType ) {
 
 //----------------------------------------------------------------//
 void MOAIGfxDevice::Clear () {
+
+	this->mDefaultTexture.Set ( *this, 0 );
 
 	this->ProcessDeleters ();
 
@@ -460,6 +492,29 @@ void MOAIGfxDevice::DetectContext () {
 }
 
 //----------------------------------------------------------------//
+void MOAIGfxDevice::DisableTextureUnits ( u32 activeTextures ) {
+
+	if ( activeTextures < this->mActiveTextures ) {
+		
+		this->Flush ();
+	
+		for ( u32 i = activeTextures; i < this->mActiveTextures; ++i ) {
+			
+			#if USE_OPENGLES1
+				if ( !this->IsProgrammable ()) {
+					glActiveTexture ( GL_TEXTURE0 + i );
+					glDisable ( GL_TEXTURE_2D );
+				}
+			#endif
+			
+			this->mTextureUnits [ i ] = 0;
+		}
+	}
+	
+	this->mActiveTextures = activeTextures;
+}
+
+//----------------------------------------------------------------//
 void MOAIGfxDevice::DrawPrims () {
 
 	if ( this->mVertexFormat ) {
@@ -531,7 +586,7 @@ const USMatrix4x4& MOAIGfxDevice::GetBillboardMtx () const {
 //----------------------------------------------------------------//
 float MOAIGfxDevice::GetDeviceScale () {
 
-	return this->mDeviceScale;
+	return this->mBufferScale;
 }
 
 //----------------------------------------------------------------//
@@ -555,7 +610,7 @@ cc8* MOAIGfxDevice::GetErrorString ( int error ) const {
 //----------------------------------------------------------------//
 u32 MOAIGfxDevice::GetHeight () const {
 
-	return this->mHeight;
+	return this->mBufferHeight;
 }
 
 //----------------------------------------------------------------//
@@ -583,8 +638,8 @@ USRect MOAIGfxDevice::GetRect () const {
 	USRect rect;
 	rect.mXMin = 0;
 	rect.mYMin = 0;
-	rect.mXMax = ( float )this->mWidth;
-	rect.mYMax = ( float )this->mHeight;
+	rect.mXMax = ( float )this->mBufferWidth;
+	rect.mYMax = ( float )this->mBufferHeight;
 	
 	return rect;
 }
@@ -635,7 +690,7 @@ USMatrix4x4 MOAIGfxDevice::GetViewProjMtx () const {
 //----------------------------------------------------------------//
 u32 MOAIGfxDevice::GetWidth () const {
 
-	return this->mWidth;
+	return this->mBufferWidth;
 }
 
 //----------------------------------------------------------------//
@@ -725,8 +780,6 @@ MOAIGfxDevice::MOAIGfxDevice () :
 	mClearColorNode ( 0 ),
 	mCpuVertexTransform ( false ),
 	mCpuUVTransform ( false ),
-	mDefaultFrameBuffer ( 0 ),
-	mDeviceScale ( 1.0f ),
 	mHasContext ( false ),
 	mIsFramebufferSupported ( 0 ),
 	mIsOpenGLES ( false ),
@@ -753,8 +806,10 @@ MOAIGfxDevice::MOAIGfxDevice () :
 	mVertexFormatBuffer ( 0 ),
 	mVertexMtxInput ( VTX_STAGE_MODEL ),
 	mVertexMtxOutput ( VTX_STAGE_MODEL ),
-	mWidth ( 0 ),
-	mHeight ( 0 ),
+	mDefaultBufferID ( 0 ),
+	mBufferWidth ( 0 ),
+	mBufferHeight ( 0 ),
+	mBufferScale ( 1.0f ),
 	mLandscape ( 0 ) {
 	
 	RTTI_SINGLE ( MOAIGlobalEventSource )
@@ -806,18 +861,18 @@ void MOAIGfxDevice::PushDeleter ( u32 type, GLuint id ) {
 //----------------------------------------------------------------//
 void MOAIGfxDevice::ReadFrameBuffer	( MOAIImage * img ) {
 
-	unsigned char *buffer = (unsigned char *) malloc ( this->mWidth * this->mHeight * 4 );
+	unsigned char *buffer = (unsigned char *) malloc ( this->mBufferWidth * this->mBufferHeight * 4 );
 
-	glReadPixels( 0, 0, this->mWidth, this->mHeight, GL_RGBA, GL_UNSIGNED_BYTE, buffer );
+	glReadPixels( 0, 0, this->mBufferWidth, this->mBufferHeight, GL_RGBA, GL_UNSIGNED_BYTE, buffer );
 
 	//image is flipped vertically, flip it back
 	int index,indexInvert;
-	for ( u32 y = 0; y < ( this->mHeight / 2 ); ++y ) {
-		for ( u32 x = 0; x < this->mWidth; ++x ) {
+	for ( u32 y = 0; y < ( this->mBufferHeight / 2 ); ++y ) {
+		for ( u32 x = 0; x < this->mBufferWidth; ++x ) {
 			for ( u32 i = 0; i < 4; ++i ) {
 
-				index = i + ( x * 4 ) + ( y * this->mWidth * 4 );
-				indexInvert = i + ( x * 4 ) + (( this->mHeight - 1 - y ) * this->mWidth * 4 );
+				index = i + ( x * 4 ) + ( y * this->mBufferWidth * 4 );
+				indexInvert = i + ( x * 4 ) + (( this->mBufferHeight - 1 - y ) * this->mBufferWidth * 4 );
 
 				unsigned char temp = buffer [ indexInvert ];
 				buffer [ indexInvert ] = buffer [ index ];
@@ -826,7 +881,7 @@ void MOAIGfxDevice::ReadFrameBuffer	( MOAIImage * img ) {
 		}
 	}
 
-	img->Init ( buffer, this->mWidth, this->mHeight, USColor::RGBA_8888 );
+	img->Init ( buffer, this->mBufferWidth, this->mBufferHeight, USColor::RGBA_8888 );
 
 	free ( buffer );
 }
@@ -842,6 +897,7 @@ void MOAIGfxDevice::RegisterLuaClass ( MOAILuaState& state ) {
 		{ "isProgrammable",				_isProgrammable },
 		{ "setClearColor",				_setClearColor },
 		{ "setClearDepth",				_setClearDepth },
+		{ "setDefaultTexture",			_setDefaultTexture },
 		{ "setListener",				&MOAIGlobalEventSource::_setListener < MOAIGfxDevice > },
 		{ "setPenColor",				_setPenColor },
 		{ "setPenWidth",				_setPenWidth },
@@ -1043,6 +1099,21 @@ void MOAIGfxDevice::SetBlendMode ( int srcFactor, int dstFactor ) {
 }
 
 //----------------------------------------------------------------//
+void MOAIGfxDevice::SetBufferScale ( float scale ) {
+
+	this->mBufferScale = scale;
+}
+
+//----------------------------------------------------------------//
+void MOAIGfxDevice::SetBufferSize ( u32 width, u32 height ) {
+
+	if (( this->mBufferWidth != width ) || ( this->mBufferHeight != height )) {
+		this->mBufferWidth = width;
+		this->mBufferHeight = height;
+	}
+}
+
+//----------------------------------------------------------------//
 void MOAIGfxDevice::SetClearColor ( MOAIColor* color ) {
 
 	if ( this->mClearColorNode != color ) {
@@ -1077,15 +1148,9 @@ void MOAIGfxDevice::SetCullFunc ( int cullFunc ) {
 }
 
 //----------------------------------------------------------------//
-void MOAIGfxDevice::SetDeviceScale ( float scale ) {
-
-	this->mDeviceScale = scale;
-
-}
-//----------------------------------------------------------------//
 void MOAIGfxDevice::SetDefaultFrameBuffer ( GLuint frameBuffer ) {
 
-	this->mDefaultFrameBuffer = frameBuffer;
+	this->mDefaultBufferID = frameBuffer;
 }
 
 //----------------------------------------------------------------//
@@ -1132,7 +1197,7 @@ void MOAIGfxDevice::SetFrameBuffer ( MOAIFrameBuffer* frameBuffer ) {
 	}
 	else {
 		if ( this->mIsFramebufferSupported ) {
-			glBindFramebuffer ( GL_FRAMEBUFFER, this->mDefaultFrameBuffer ); // TODO: crash?
+			glBindFramebuffer ( GL_FRAMEBUFFER, this->mDefaultBufferID ); // TODO: crash?
 		}
 	}
 }
@@ -1292,42 +1357,9 @@ void MOAIGfxDevice::SetShaderPreset ( u32 preset ) {
 }
 
 //----------------------------------------------------------------//
-void MOAIGfxDevice::SetSize ( u32 width, u32 height ) {
-
-	if (( this->mWidth != width ) || ( this->mHeight != height )) {
-
-		this->mWidth = width;
-		this->mHeight = height;
-		
-		MOAILuaStateHandle state = MOAILuaRuntime::Get ().State ();
-		if ( this->PushListener ( EVENT_RESIZE, state )) {
-			lua_pushnumber ( state, width );
-			lua_pushnumber ( state, height );
-			state.DebugCall ( 2, 0 );
-		}
-	}
-}
-
-//----------------------------------------------------------------//
 bool MOAIGfxDevice::SetTexture () {
 	
-	if ( this->mActiveTextures ) {
-	
-		this->Flush ();
-	
-		for ( u32 i = 0; i < this->mActiveTextures; ++i ) {
-			glActiveTexture ( GL_TEXTURE0 + i );
-			
-			#if USE_OPENGLES1
-				if ( !this->IsProgrammable ()) {
-					glDisable ( GL_TEXTURE_2D );
-				}
-			#endif
-			
-			this->mTextureUnits [ i ] = 0;
-		}
-		this->mActiveTextures = 0;
-	}
+	this->DisableTextureUnits ( 0 );
 	return true;
 }
 
@@ -1338,44 +1370,8 @@ bool MOAIGfxDevice::SetTexture ( MOAITextureBase* texture ) {
 		return this->SetTexture ();
 	}
 	
-	// disable any active textures beyond the first unit
-	if ( this->mActiveTextures > 1 ) {
-		this->Flush ();
-	
-		for ( u32 i = 1; i < this->mActiveTextures; ++i ) {
-			glActiveTexture ( GL_TEXTURE0 + i );
-			
-			#if USE_OPENGLES1
-				if ( !this->IsProgrammable ()) {
-					glDisable ( GL_TEXTURE_2D );
-				}
-			#endif
-			
-			this->mTextureUnits [ i ] = 0;
-		}
-	}
-	
-	this->mActiveTextures = 1;
-	
-	if ( this->mTextureUnits [ 0 ] == texture ) {
-		return true;
-	}
-	
-	this->Flush ();
-	
-	glActiveTexture ( GL_TEXTURE0 );
-	
-	if ( !this->mTextureUnits [ 0 ]) {
-	
-		#if USE_OPENGLES1
-			if ( !this->IsProgrammable ()) {
-				glEnable ( GL_TEXTURE_2D );
-			}
-		#endif
-	}
-	
-	this->mTextureUnits [ 0 ] = texture;
-	return texture->Bind ();
+	this->DisableTextureUnits ( 1 );
+	return this->SetTexture ( 0, texture );
 }
 
 //----------------------------------------------------------------//
@@ -1396,43 +1392,41 @@ bool MOAIGfxDevice::SetTexture ( MOAIMultiTexture* multi ) {
 	}
 	
 	// disable any unused textures
-	if ( total < this->mActiveTextures ) {
-		this->Flush ();
-	
-		for ( u32 i = total; i < this->mActiveTextures; ++i ) {
-			glActiveTexture ( GL_TEXTURE0 + i );
-			
-			#if USE_OPENGLES1
-				if ( !this->IsProgrammable ()) {
-					glDisable ( GL_TEXTURE_2D );
-				}
-			#endif
-			
-			this->mTextureUnits [ i ] = 0;
-		}
-	}
+	this->DisableTextureUnits ( total );
 	
 	for ( u32 i = 0; i < total; ++i ) {
-	
-		if ( this->mTextureUnits [ i ] != multi->mTextures [ i ]) {
-			
-			this->Flush ();
-			glActiveTexture ( GL_TEXTURE0 + i );
-			
-			if ( !this->mTextureUnits [ i ]) {
-			
-				#if USE_OPENGLES1
-					if ( !this->IsProgrammable ()) {
-						glEnable ( GL_TEXTURE_2D );
-					}
-				#endif
-			}
-			this->mTextureUnits [ i ] = multi->mTextures [ i ];
-			this->mTextureUnits [ i ]->Bind ();
-		}
+		this->SetTexture ( i, multi->mTextures [ i ]);
 	}
-	this->mActiveTextures = total;
 	return true;
+}
+
+//----------------------------------------------------------------//
+bool MOAIGfxDevice::SetTexture ( u32 textureUnit, MOAITextureBase* texture ) {
+	
+	if ( !texture ) {
+		// TODO: is this right?
+		this->mTextureUnits [ textureUnit ] = 0;
+		return false;
+	}
+	
+	if ( texture->mState == MOAIGfxResource::STATE_PRELOAD ) {
+		return this->SetTexture ( textureUnit, this->mDefaultTexture );
+	}
+	
+	if ( this->mTextureUnits [ textureUnit ] == texture ) return true;
+	
+	this->Flush ();
+	
+	glActiveTexture ( GL_TEXTURE0 + textureUnit );
+	
+	#if USE_OPENGLES1
+		if (( !this->mTextureUnits [ textureUnit ]) && ( !this->IsProgrammable ())) {
+			glEnable ( GL_TEXTURE_2D );
+		}
+	#endif
+	
+	this->mTextureUnits [ textureUnit ] = texture;
+	return texture->Bind ();
 }
 
 //----------------------------------------------------------------//
@@ -1579,8 +1573,8 @@ void MOAIGfxDevice::SetVertexTransform ( u32 id, const USMatrix4x4& transform ) 
 //----------------------------------------------------------------//
 void MOAIGfxDevice::SetViewport () {
 
-	float width = ( float )this->mWidth;
-	float height = ( float )this->mHeight;
+	float width = ( float )this->mBufferWidth;
+	float height = ( float )this->mBufferHeight;
 
 	MOAIViewport rect;
 	rect.Init ( 0.0f, 0.0f, width, height );
@@ -1816,7 +1810,7 @@ USRect MOAIGfxDevice::WndRectToDevice ( USRect rect ) const {
 
 	if ( this->mLandscape ) {
 	
-		float width = ( float )this->mWidth;
+		float width = ( float )this->mBufferWidth;
 		
 		float xMin = rect.mYMin;
 		float yMin = width - rect.mXMax;
@@ -1830,7 +1824,7 @@ USRect MOAIGfxDevice::WndRectToDevice ( USRect rect ) const {
 	}
 	else {
 	
-		float height = ( float )this->mHeight;
+		float height = ( float )this->mBufferHeight;
 		
 		float xMin = rect.mXMin;
 		float yMin = height - rect.mYMax;
@@ -1843,7 +1837,7 @@ USRect MOAIGfxDevice::WndRectToDevice ( USRect rect ) const {
 		rect.mYMax = yMax;
 	}
 
-	rect.Scale ( this->mDeviceScale, this->mDeviceScale );
+	rect.Scale ( this->mBufferScale, this->mBufferScale );
 	return rect;
 }
 

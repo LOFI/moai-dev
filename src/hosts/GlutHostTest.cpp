@@ -9,10 +9,18 @@
 #include <lua-headers/moai_lua.h>
 #include <GlutHostTest.h>
 
+#ifdef __MOAI_LINUX_BUILD
+	#include <string.h>	
+#endif
+
 #ifdef _WIN32
 	#include <glut.h>
 #else
-	#include <GLUT/glut.h>
+	#ifdef __MOAI_LINUX_BUILD
+		#include GLUT_LIBRARY_PATH
+	#else
+		#include <GLUT/glut.h>
+	#endif
 #endif
 
 #define UNUSED(p) (( void )p)
@@ -120,7 +128,8 @@ int GlutHostTest ( int argc, char** argv ) {
 	AKURunBytecode ( moai_lua, moai_lua_SIZE );
 	
 	// parse the commands
-	int total = argc - 1;
+	//int total = argc - 1;
+	int total = argc;
 
 	for ( int i = 1; i < total; ++i ) {
 		
@@ -152,11 +161,18 @@ int GlutHostTest ( int argc, char** argv ) {
 		if ( strcmp ( arg, "-t" ) == 0 ) {
 			AKUTestRunTest ( argv [ ++i ]);
 		}
+
+		// xml results
+		if ( strcmp ( arg, "-x" ) == 0 ) {
+			AKUTestSetXmlResultsFile ( argv [ ++i ]);
+		}
 	}
 	
-	for ( ; i < argc; ++i ) {
+	printf("Before\n");
+	for ( int i = 1; i < argc; ++i ) {
 		AKUTestRunScript ( argv [ i ]);
 	}
+	printf("After\n");
 	
 	if ( sHasWindow ) {
 		glutTimerFunc ( 0, _onTimer, 0 );
@@ -164,4 +180,11 @@ int GlutHostTest ( int argc, char** argv ) {
 	}
 	return 0;
 }
+
+#ifdef __MOAI_LINUX_BUILD
+	int main ( int argc, char** argv ) {
+		GlutHostTest(argc, argv);
+		return 0;
+	}
+#endif
 

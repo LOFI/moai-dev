@@ -41,3 +41,7 @@ moai_manual(library
 )
 moai_needs(crypto)
 moai_needs(curl)
+<<<<<<< HEAD
+=======
+moai_needs(sqlite3)
+>>>>>>> upstream/linux
